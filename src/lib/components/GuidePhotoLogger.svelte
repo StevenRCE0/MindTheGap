@@ -30,6 +30,44 @@
         });
     }
 
+    function loadImage(src: string): Promise<HTMLImageElement> {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error("Failed to process image"));
+            image.src = src;
+        });
+    }
+
+    async function compressImageDataUrl(dataUrl: string): Promise<string> {
+        const image = await loadImage(dataUrl);
+        const maxSide = 1600;
+        const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+
+        if (longestSide <= maxSide) {
+            return dataUrl;
+        }
+
+        const scale = maxSide / longestSide;
+        const targetWidth = Math.max(1, Math.round(image.naturalWidth * scale));
+        const targetHeight = Math.max(1, Math.round(image.naturalHeight * scale));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+
+        const context = canvas.getContext("2d");
+        if (!context) {
+            return dataUrl;
+        }
+
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, targetWidth, targetHeight);
+        context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+        return canvas.toDataURL("image/jpeg", 0.82);
+    }
+
     async function loadAchievements(): Promise<void> {
         if (!browser || !dbAvailable) {
             isLoading = false;
@@ -60,7 +98,8 @@
         }
 
         try {
-            const imageDataUrl = await fileToDataUrl(file);
+            const rawImageDataUrl = await fileToDataUrl(file);
+            const imageDataUrl = await compressImageDataUrl(rawImageDataUrl);
             const id =
                 browser && "randomUUID" in crypto
                     ? crypto.randomUUID()

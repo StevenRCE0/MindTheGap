@@ -51,10 +51,6 @@
         opacity: 0.95;
     }
 
-    p {
-        margin: 0;
-    }
-
     .preview {
         width: 100%;
         max-width: 760px;

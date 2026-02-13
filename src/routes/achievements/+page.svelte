@@ -1,7 +1,7 @@
 <script lang="ts">
     import { browser } from "$app/environment";
     import { onMount } from "svelte";
-    import { toPng } from "html-to-image";
+    import { toJpeg, toPng } from "html-to-image";
     import FullscreenPhoto from "$lib/components/FullscreenPhoto.svelte";
     import { londonGuides } from "$lib/guides";
     import type { Guide } from "$lib/model/guide";
@@ -165,6 +165,40 @@
         );
     }
 
+    function isIosSafari(): boolean {
+        const ua = navigator.userAgent;
+        const isAppleMobile =
+            /iPad|iPhone|iPod/.test(ua) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        const isWebKit = /WebKit/.test(ua);
+        const isOtherIosBrowser = /CriOS|FxiOS|EdgiOS/.test(ua);
+        return isAppleMobile && isWebKit && !isOtherIosBrowser;
+    }
+
+    async function waitForPosterImages(node: HTMLElement): Promise<void> {
+        const images = Array.from(node.querySelectorAll("img"));
+
+        await Promise.all(
+            images.map(async (image) => {
+                if (!image.complete) {
+                    await new Promise<void>((resolve) => {
+                        const done = () => resolve();
+                        image.addEventListener("load", done, { once: true });
+                        image.addEventListener("error", done, { once: true });
+                    });
+                }
+
+                if ("decode" in image) {
+                    try {
+                        await image.decode();
+                    } catch {
+                        // decode can fail for already-decoded or broken images
+                    }
+                }
+            }),
+        );
+    }
+
     async function dumpPosterAsImage(): Promise<void> {
         if (!browser || !posterElement || isDumping) {
             return;
@@ -174,17 +208,32 @@
         error = "";
 
         try {
-            await document.fonts.ready;
-            const dataUrl = await toPng(posterElement, {
-                cacheBust: true,
-                pixelRatio: 2,
-                backgroundColor: "#f5f7ff",
-            });
+            if ("fonts" in document) {
+                await document.fonts.ready;
+            }
+
+            await waitForPosterImages(posterElement);
+
+            const useIosFallback = isIosSafari();
+            const dataUrl = useIosFallback
+                ? await toJpeg(posterElement, {
+                      cacheBust: true,
+                      pixelRatio: 1,
+                      quality: 0.92,
+                      backgroundColor: "#f5f7ff",
+                  })
+                : await toPng(posterElement, {
+                      cacheBust: true,
+                      pixelRatio: 2,
+                      backgroundColor: "#f5f7ff",
+                  });
 
             const date = new Date().toISOString().slice(0, 10);
             const anchor = document.createElement("a");
             anchor.href = dataUrl;
-            anchor.download = `mind-the-gap-review-${date}.png`;
+            anchor.download = useIosFallback
+                ? `mind-the-gap-review-${date}.jpg`
+                : `mind-the-gap-review-${date}.png`;
             document.body.append(anchor);
             anchor.click();
             anchor.remove();
