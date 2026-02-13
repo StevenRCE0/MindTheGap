@@ -13,11 +13,11 @@
 <section class="card">
     <div class="badge">Difficulty: {data.guide.difficulty}</div>
     <div class="title-row">
-        <img
+        <!-- <img
             alt={data.guide.iconAlt}
             class="guide-icon"
             src={data.guide.icon}
-        />
+        /> -->
         <h1>{data.guide.title}</h1>
     </div>
     <p>{data.guide.whyItMatters}</p>
