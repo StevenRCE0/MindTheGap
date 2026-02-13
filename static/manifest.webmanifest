@@ -1,0 +1,17 @@
+{
+	"name": "Mind the Gap London",
+	"short_name": "MindTheGap",
+	"description": "Offline-first newcomer guides for London with photo achievements.",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#0f2a43",
+	"theme_color": "#102542",
+	"icons": [
+		{
+			"src": "/icon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any maskable"
+		}
+	]
+}

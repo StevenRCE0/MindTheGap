@@ -1,0 +1,16 @@
+@import "@fontsource/urbanist/400.css";
+@import "@fontsource/urbanist/600.css";
+
+@font-face {
+    font-family: "Beautiful Night Club";
+    src: local("Beautiful Night Club"), local("Beautiful Nightclub");
+    font-display: swap;
+}
+
+:root {
+    --font-brand: "Arial Black", "Arial Bold", Gadget, sans-serif;
+    --font-text: "Urbanist", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-special:
+        "Beautiful Night Club", "Brush Script MT", "Lucida Handwriting",
+        cursive;
+}
