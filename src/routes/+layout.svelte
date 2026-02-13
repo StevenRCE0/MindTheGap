@@ -2,6 +2,7 @@
     import { browser } from "$app/environment";
     import { onNavigate } from "$app/navigation";
     import favicon from "$lib/assets/favicon.svg";
+    import eyeFooter from "$lib/assets/Eye.png";
     import { onMount } from "svelte";
     import "$lib/styles/fonts.css";
     import "$lib/styles/palette.css";
@@ -70,6 +71,13 @@
         </nav>
     </header>
     <main>{@render children()}</main>
+    <footer class="page-footer">
+        <img
+            alt="London Eye footer artwork"
+            class="footer-eye"
+            src={eyeFooter}
+        />
+    </footer>
 </div>
 
 <style>
@@ -146,6 +154,22 @@
         max-width: 980px;
         margin: 0 auto;
         padding: 1.25rem 1rem 2rem;
+    }
+
+    .page-footer {
+        display: flex;
+        justify-content: center;
+    }
+
+    .footer-eye {
+        width: 300px;
+        overflow: hidden;
+        height: auto;
+        object-fit: contain;
+        opacity: 0.95;
+        pointer-events: none;
+        user-select: none;
+        transform: translateY(20%);
     }
 
     :global(::view-transition-old(root)) {
