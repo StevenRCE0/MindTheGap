@@ -1,7 +1,7 @@
 <script lang="ts">
     import { browser } from "$app/environment";
     import { onMount } from "svelte";
-    import { toJpeg, toPng } from "html-to-image";
+    import { toPng } from "html-to-image";
     import FullscreenPhoto from "$lib/components/FullscreenPhoto.svelte";
     import { londonGuides } from "$lib/guides";
     import type { Guide } from "$lib/model/guide";
@@ -165,16 +165,6 @@
         );
     }
 
-    function isIosSafari(): boolean {
-        const ua = navigator.userAgent;
-        const isAppleMobile =
-            /iPad|iPhone|iPod/.test(ua) ||
-            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-        const isWebKit = /WebKit/.test(ua);
-        const isOtherIosBrowser = /CriOS|FxiOS|EdgiOS/.test(ua);
-        return isAppleMobile && isWebKit && !isOtherIosBrowser;
-    }
-
     function isStandaloneAppMode(): boolean {
         const standaloneFromMedia =
             window.matchMedia?.("(display-mode: standalone)").matches ?? false;
@@ -261,6 +251,10 @@
         );
     }
 
+    function wait(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
     async function dumpPosterAsImage(): Promise<void> {
         if (!browser || !posterElement || isDumping) {
             return;
@@ -275,23 +269,16 @@
             }
 
             await waitForPosterImages(posterElement);
+            await wait(1000);
 
-            const useIosFallback = isIosSafari();
-            const dataUrl = useIosFallback
-                ? await toJpeg(posterElement, {
-                      cacheBust: true,
-                      pixelRatio: 1,
-                      quality: 0.92,
-                      backgroundColor: "#f5f7ff",
-                  })
-                : await toPng(posterElement, {
-                      cacheBust: true,
-                      pixelRatio: 2,
-                      backgroundColor: "#f5f7ff",
-                  });
+            const dataUrl = await toPng(posterElement, {
+                cacheBust: true,
+                pixelRatio: 2,
+                backgroundColor: "#f5f7ff",
+            });
 
             const date = new Date().toISOString().slice(0, 10);
-            const extension = useIosFallback ? "jpg" : "png";
+            const extension = "png";
             const filename = `mind-the-gap-review-${date}.${extension}`;
             const blob = dataUrlToBlob(dataUrl);
             const file = new File([blob], filename, { type: blob.type });
@@ -301,7 +288,7 @@
                 return;
             }
 
-            if (useIosFallback && isStandaloneAppMode()) {
+            if (isStandaloneAppMode()) {
                 openImagePreviewTab(dataUrl);
                 return;
             }
