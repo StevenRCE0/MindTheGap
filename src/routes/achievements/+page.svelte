@@ -1,7 +1,7 @@
 <script lang="ts">
     import { browser } from "$app/environment";
     import { onMount } from "svelte";
-    import { toPng } from "html-to-image";
+    import html2canvas from "html2canvas";
     import FullscreenPhoto from "$lib/components/FullscreenPhoto.svelte";
     import { londonGuides } from "$lib/guides";
     import type { Guide } from "$lib/model/guide";
@@ -174,18 +174,16 @@
         return standaloneFromMedia || standaloneFromNavigator;
     }
 
-    function dataUrlToBlob(dataUrl: string): Blob {
-        const [header, base64] = dataUrl.split(",");
-        const mimeMatch = /data:(.*?);base64/.exec(header ?? "");
-        const mimeType = mimeMatch?.[1] ?? "application/octet-stream";
-        const binary = atob(base64 ?? "");
-        const bytes = new Uint8Array(binary.length);
-
-        for (let index = 0; index < binary.length; index += 1) {
-            bytes[index] = binary.charCodeAt(index);
-        }
-
-        return new Blob([bytes], { type: mimeType });
+    function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+        return new Promise((resolve, reject) => {
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    resolve(blob);
+                    return;
+                }
+                reject(new Error("Canvas export failed"));
+            }, "image/png");
+        });
     }
 
     async function tryShareImage(file: File): Promise<boolean> {
@@ -214,15 +212,15 @@
         }
     }
 
-    function openImagePreviewTab(dataUrl: string): void {
+    function openImagePreviewTab(imageUrl: string): void {
         const previewWindow = window.open("", "_blank");
         if (!previewWindow) {
-            window.location.href = dataUrl;
+            window.location.href = imageUrl;
             return;
         }
 
         previewWindow.document.write(
-            `<html><head><title>Poster Preview</title></head><body style="margin:0;background:#111;display:grid;place-items:center;"><img src="${dataUrl}" style="max-width:100%;height:auto;" alt="Poster preview" /></body></html>`,
+            `<html><head><title>Poster Preview</title></head><body style="margin:0;background:#111;display:grid;place-items:center;"><img src="${imageUrl}" style="max-width:100%;height:auto;" alt="Poster preview" /></body></html>`,
         );
         previewWindow.document.close();
     }
@@ -271,16 +269,18 @@
             await waitForPosterImages(posterElement);
             await wait(1000);
 
-            const dataUrl = await toPng(posterElement, {
-                cacheBust: true,
-                pixelRatio: 2,
+            const canvas = await html2canvas(posterElement, {
                 backgroundColor: "#f5f7ff",
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
             });
+            const blob = await canvasToBlob(canvas);
 
             const date = new Date().toISOString().slice(0, 10);
             const extension = "png";
             const filename = `mind-the-gap-review-${date}.${extension}`;
-            const blob = dataUrlToBlob(dataUrl);
             const file = new File([blob], filename, { type: blob.type });
 
             const shared = await tryShareImage(file);
@@ -288,12 +288,13 @@
                 return;
             }
 
+            const objectUrl = URL.createObjectURL(blob);
             if (isStandaloneAppMode()) {
-                openImagePreviewTab(dataUrl);
+                openImagePreviewTab(objectUrl);
+                setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
                 return;
             }
 
-            const objectUrl = URL.createObjectURL(blob);
             const anchor = document.createElement("a");
             anchor.href = objectUrl;
             anchor.download = filename;
