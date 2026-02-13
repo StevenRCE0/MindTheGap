@@ -144,7 +144,6 @@
 
             <input
                 accept="image/*"
-                capture="environment"
                 class="hidden-input"
                 id={`upload-${guideId}`}
                 onchange={handleUpload}
