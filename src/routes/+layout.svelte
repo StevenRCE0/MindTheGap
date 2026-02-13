@@ -60,7 +60,9 @@
             >Mind the <span style="letter-spacing: 0.25rem;">Gap</span></a
         >
         {#if !isOnline}
-            <p class="offline-banner">Are you in the tube?</p>
+            <p class="offline-banner">
+                Using offline guides. Are you in the tube? 🚇
+            </p>
         {/if}
         <nav>
             <a href="/">Guides</a>

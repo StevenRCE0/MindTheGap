@@ -52,13 +52,13 @@
         margin-bottom: 0.4rem;
     }
 
-    .guide-icon {
+    /*.guide-icon {
         position: absolute;
         right: 2rem;
         transform: translateX(30%);
         height: 250px;
         object-fit: contain;
-    }
+    }*/
 
     p,
     li {
