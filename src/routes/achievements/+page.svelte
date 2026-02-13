@@ -175,6 +175,68 @@
         return isAppleMobile && isWebKit && !isOtherIosBrowser;
     }
 
+    function isStandaloneAppMode(): boolean {
+        const standaloneFromMedia =
+            window.matchMedia?.("(display-mode: standalone)").matches ?? false;
+        const standaloneFromNavigator = (
+            navigator as Navigator & { standalone?: boolean }
+        ).standalone === true;
+        return standaloneFromMedia || standaloneFromNavigator;
+    }
+
+    function dataUrlToBlob(dataUrl: string): Blob {
+        const [header, base64] = dataUrl.split(",");
+        const mimeMatch = /data:(.*?);base64/.exec(header ?? "");
+        const mimeType = mimeMatch?.[1] ?? "application/octet-stream";
+        const binary = atob(base64 ?? "");
+        const bytes = new Uint8Array(binary.length);
+
+        for (let index = 0; index < binary.length; index += 1) {
+            bytes[index] = binary.charCodeAt(index);
+        }
+
+        return new Blob([bytes], { type: mimeType });
+    }
+
+    async function tryShareImage(file: File): Promise<boolean> {
+        if (!("share" in navigator) || !("canShare" in navigator)) {
+            return false;
+        }
+
+        try {
+            if (!navigator.canShare({ files: [file] })) {
+                return false;
+            }
+
+            await navigator.share({
+                files: [file],
+                title: "Mind the Gap Poster",
+            });
+            return true;
+        } catch (shareError) {
+            if (
+                shareError instanceof DOMException &&
+                shareError.name === "AbortError"
+            ) {
+                return true;
+            }
+            return false;
+        }
+    }
+
+    function openImagePreviewTab(dataUrl: string): void {
+        const previewWindow = window.open("", "_blank");
+        if (!previewWindow) {
+            window.location.href = dataUrl;
+            return;
+        }
+
+        previewWindow.document.write(
+            `<html><head><title>Poster Preview</title></head><body style="margin:0;background:#111;display:grid;place-items:center;"><img src="${dataUrl}" style="max-width:100%;height:auto;" alt="Poster preview" /></body></html>`,
+        );
+        previewWindow.document.close();
+    }
+
     async function waitForPosterImages(node: HTMLElement): Promise<void> {
         const images = Array.from(node.querySelectorAll("img"));
 
@@ -229,14 +291,29 @@
                   });
 
             const date = new Date().toISOString().slice(0, 10);
+            const extension = useIosFallback ? "jpg" : "png";
+            const filename = `mind-the-gap-review-${date}.${extension}`;
+            const blob = dataUrlToBlob(dataUrl);
+            const file = new File([blob], filename, { type: blob.type });
+
+            const shared = await tryShareImage(file);
+            if (shared) {
+                return;
+            }
+
+            if (useIosFallback && isStandaloneAppMode()) {
+                openImagePreviewTab(dataUrl);
+                return;
+            }
+
+            const objectUrl = URL.createObjectURL(blob);
             const anchor = document.createElement("a");
-            anchor.href = dataUrl;
-            anchor.download = useIosFallback
-                ? `mind-the-gap-review-${date}.jpg`
-                : `mind-the-gap-review-${date}.png`;
+            anchor.href = objectUrl;
+            anchor.download = filename;
             document.body.append(anchor);
             anchor.click();
             anchor.remove();
+            URL.revokeObjectURL(objectUrl);
         } catch {
             error = "Could not export poster image. Please try again.";
         } finally {
