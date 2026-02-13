@@ -64,7 +64,7 @@
         {/if}
         <nav>
             <a href="/">Guides</a>
-            <a href="/achievements">Achievements</a>
+            <a href="/achievements">My Poster</a>
         </nav>
     </header>
     <main>{@render children()}</main>

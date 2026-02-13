@@ -1,35 +1,191 @@
 <script lang="ts">
     import { browser } from "$app/environment";
     import { onMount } from "svelte";
+    import { toPng } from "html-to-image";
     import FullscreenPhoto from "$lib/components/FullscreenPhoto.svelte";
     import { londonGuides } from "$lib/guides";
+    import type { Guide } from "$lib/model/guide";
     import { achievementRepository } from "$lib/model/achievement-repository";
     import type { Achievement } from "$lib/model/achievement";
+
+    type GuideSection = {
+        guideId: string;
+        guide?: Guide;
+        photos: Achievement[];
+    };
 
     let achievements = $state<Achievement[]>([]);
     let isLoading = $state(true);
     let error = $state("");
+    let isDumping = $state(false);
+    let posterElement = $state<HTMLElement | null>(null);
 
-    function guideById(guideId: string) {
+    function guideById(guideId: string): Guide | undefined {
         return londonGuides.find((guide) => guide.id === guideId);
     }
 
-    function completedGuideCount(): number {
-        return new Set(achievements.map((achievement) => achievement.guideId)).size;
+    function sortPhotosByLatest(photos: Achievement[]): Achievement[] {
+        return [...photos].sort((a, b) => {
+            return (
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime()
+            );
+        });
     }
 
-    function downloadPhoto(imageDataUrl: string, filename: string): void {
-        const anchor = document.createElement("a");
-        anchor.href = imageDataUrl;
-        anchor.download = filename;
-        document.body.append(anchor);
-        anchor.click();
-        anchor.remove();
+    const guideSections = $derived.by((): GuideSection[] => {
+        const grouped = new Map<string, Achievement[]>();
+        for (const achievement of achievements) {
+            const current = grouped.get(achievement.guideId) ?? [];
+            current.push(achievement);
+            grouped.set(achievement.guideId, current);
+        }
+
+        const sectionsFromKnownGuides = londonGuides
+            .map((guide) => {
+                const photos = sortPhotosByLatest(grouped.get(guide.id) ?? []);
+                return {
+                    guideId: guide.id,
+                    guide,
+                    photos,
+                };
+            })
+            .filter((section) => section.photos.length > 0);
+
+        const knownGuideIds = new Set(londonGuides.map((guide) => guide.id));
+        const sectionsFromUnknownGuides = Array.from(grouped.entries())
+            .filter(([guideId]) => !knownGuideIds.has(guideId))
+            .map(([guideId, photos]) => {
+                return {
+                    guideId,
+                    guide: undefined,
+                    photos: sortPhotosByLatest(photos),
+                };
+            });
+
+        return [...sectionsFromKnownGuides, ...sectionsFromUnknownGuides];
+    });
+
+    const guideCount = $derived(guideSections.length);
+    const photoCount = $derived(achievements.length);
+
+    function summaryPeriod(): string {
+        if (achievements.length === 0) {
+            return "";
+        }
+
+        const years = achievements
+            .map((achievement) => new Date(achievement.createdAt).getFullYear())
+            .filter((year) => Number.isFinite(year))
+            .sort((a, b) => a - b);
+
+        const firstYear = years[0];
+        const lastYear = years[years.length - 1];
+        return firstYear === lastYear
+            ? String(firstYear)
+            : `${firstYear}-${lastYear}`;
     }
 
-    function buildFilename(achievement: Achievement): string {
-        const date = new Date(achievement.createdAt).toISOString().slice(0, 10);
-        return `achievement-${achievement.guideId}-${date}.jpg`;
+    function firstUpdateDate(): string {
+        if (achievements.length === 0) {
+            return "";
+        }
+
+        const first = achievements
+            .map((achievement) => new Date(achievement.createdAt))
+            .sort((a, b) => a.getTime() - b.getTime())[0];
+
+        return first.toLocaleDateString("en-GB", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+        });
+    }
+
+    function hashCode(value: string): number {
+        let hash = 0;
+        for (let index = 0; index < value.length; index += 1) {
+            hash = (hash << 5) - hash + value.charCodeAt(index);
+            hash |= 0;
+        }
+        return Math.abs(hash) + 1;
+    }
+
+    function seededRandom(seed: number): () => number {
+        let t = seed;
+        return () => {
+            t += 0x6d2b79f5;
+            let r = Math.imul(t ^ (t >>> 15), 1 | t);
+            r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+            return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+
+    function randomBetween(
+        rand: () => number,
+        min: number,
+        max: number,
+    ): number {
+        return rand() * (max - min) + min;
+    }
+
+    function buildShapeStyle(guideId: string): string {
+        const rand = seededRandom(hashCode(guideId));
+        const p1x = randomBetween(rand, 0, 4);
+        const p1y = randomBetween(rand, 0, 3);
+        const p2x = randomBetween(rand, 96, 100);
+        const p2y = randomBetween(rand, 0, 2);
+        const p3x = randomBetween(rand, 96, 100);
+        const p3y = randomBetween(rand, 97, 100);
+        const p4x = randomBetween(rand, 0, 3);
+        const p4y = randomBetween(rand, 97, 100);
+        const rotate = randomBetween(rand, -0.8, 0.8);
+
+        return `background:var(--secondary-blue); opacity:0.3;clip-path: polygon(${p1x}% ${p1y}%, ${p2x}% ${p2y}%, ${p3x}% ${p3y}%, ${p4x}% ${p4y}%); transform: rotate(${rotate}deg);`;
+    }
+
+    function sectionWhyItMatters(guide?: Guide): string {
+        return (
+            guide?.whyItMatters ??
+            "Saved guide details are not available, but your photos are preserved."
+        );
+    }
+
+    function sectionQuickWin(guide?: Guide): string {
+        return (
+            guide?.quickWin ??
+            "Keep adding snapshots while exploring London and building your routine."
+        );
+    }
+
+    async function dumpPosterAsImage(): Promise<void> {
+        if (!browser || !posterElement || isDumping) {
+            return;
+        }
+
+        isDumping = true;
+        error = "";
+
+        try {
+            await document.fonts.ready;
+            const dataUrl = await toPng(posterElement, {
+                cacheBust: true,
+                pixelRatio: 2,
+                backgroundColor: "#f5f7ff",
+            });
+
+            const date = new Date().toISOString().slice(0, 10);
+            const anchor = document.createElement("a");
+            anchor.href = dataUrl;
+            anchor.download = `mind-the-gap-review-${date}.png`;
+            document.body.append(anchor);
+            anchor.click();
+            anchor.remove();
+        } catch {
+            error = "Could not export poster image. Please try again.";
+        } finally {
+            isDumping = false;
+        }
     }
 
     onMount(() => {
@@ -51,69 +207,112 @@
 </script>
 
 <svelte:head>
-    <title>Mind the Gap | Achievements</title>
+    <title>Mind the Gap | Achievements Poster</title>
     <meta
         name="description"
-        content="View all accomplished achievements and download your photos."
+        content="Single yearly-review poster for your London newcomer achievements."
     />
 </svelte:head>
 
 <section class="page">
-    <header class="card header">
-        <h1>Accomplished achievements</h1>
-        <p>Your saved achievement photos across all guides.</p>
-        <div class="stats">
-            <span class="stat">{achievements.length} photos</span>
-            <span class="stat">{completedGuideCount()} guides completed</span>
-        </div>
-    </header>
-
     {#if error}
-        <p class="error">{error}</p>
+        <p class="notice">{error}</p>
     {/if}
 
     {#if isLoading}
-        <p class="loading">Loading achievements...</p>
-    {:else if achievements.length === 0}
-        <p class="empty">No achievements yet. Add photos from a guide to see them here.</p>
+        <p class="notice">Loading achievements...</p>
+    {:else if guideSections.length === 0}
+        <p class="notice">
+            No achievements yet. Add photos from a guide to build your poster.
+        </p>
     {:else}
-        <section class="achievement-grid">
-            {#each achievements as achievement}
-                {@const guide = guideById(achievement.guideId)}
-                <article class="card achievement-card">
-                    <div class="card-head">
-                        {#if guide}
-                            <img alt={guide.iconAlt} class="icon" src={guide.icon} />
-                            <h2>{guide.title}</h2>
-                        {:else}
-                            <h2>Unknown guide</h2>
-                        {/if}
-                    </div>
+        <div class="actions">
+            <button
+                class="dump-button"
+                disabled={isDumping}
+                onclick={dumpPosterAsImage}
+                type="button"
+            >
+                {isDumping ? "Generating..." : "Download Your Poster"}
+            </button>
+        </div>
 
-                    <FullscreenPhoto
-                        alt="Accomplished achievement"
-                        src={achievement.imageDataUrl}
-                        title={new Date(achievement.createdAt).toLocaleString("en-GB")}
-                    />
+        <article bind:this={posterElement} class="poster">
+            <header class="poster-header">
+                <p class="poster-kicker">Mind the Gap</p>
+                <h1>My London Stories</h1>
+                <div class="poster-subtitle">
+                    Since {firstUpdateDate()}
+                </div>
+            </header>
 
-                    <p class="time">
-                        {new Date(achievement.createdAt).toLocaleString("en-GB")}
-                    </p>
+            <ol class="section-list">
+                {#each guideSections as section, index (section.guideId)}
+                    <li class="section-item">
+                        <div
+                            aria-hidden="true"
+                            class="section-shape"
+                            style={buildShapeStyle(section.guideId)}
+                        ></div>
+                        <div class="section-content">
+                            <div class="section-head">
+                                <div class="head-main">
+                                    <span class="count">
+                                        {String(index + 1).padStart(2, "0")}
+                                    </span>
+                                    <div>
+                                        <h2>
+                                            {section.guide?.title ??
+                                                "Unknown guide"}
+                                        </h2>
+                                        <p class="meta">
+                                            {section.photos.length}
+                                            {section.photos.length === 1
+                                                ? " photo logged"
+                                                : " photos logged"}
+                                        </p>
+                                    </div>
+                                </div>
 
-                    <button
-                        class="download-btn"
-                        onclick={() =>
-                            downloadPhoto(
-                                achievement.imageDataUrl,
-                                buildFilename(achievement),
-                            )}
-                        type="button"
-                    >
-                        Download picture
-                    </button>
-                </article>
-            {/each}
-        </section>
+                                <div class="head-side">
+                                    {#if section.guide}
+                                        <span class="difficulty">
+                                            {section.guide.difficulty}
+                                        </span>
+                                        <img
+                                            alt={section.guide.iconAlt}
+                                            class="icon"
+                                            src={section.guide.icon}
+                                        />
+                                    {/if}
+                                </div>
+                            </div>
+
+                            <p>{sectionWhyItMatters(section.guide)}</p>
+
+                            <div class="photo-grid">
+                                {#each section.photos as achievement (achievement.id)}
+                                    <figure class="photo-item">
+                                        <FullscreenPhoto
+                                            alt="Accomplished achievement"
+                                            src={achievement.imageDataUrl}
+                                            title={new Date(
+                                                achievement.createdAt,
+                                            ).toLocaleString("en-GB")}
+                                        />
+                                        <figcaption class="photo-time">
+                                            {new Date(
+                                                achievement.createdAt,
+                                            ).toLocaleString("en-GB")}
+                                        </figcaption>
+                                    </figure>
+                                {/each}
+                            </div>
+                        </div>
+                    </li>
+                {/each}
+            </ol>
+        </article>
     {/if}
 </section>
 
@@ -123,96 +322,192 @@
         gap: 1rem;
     }
 
-    .card {
-        background: rgba(255, 255, 255, 0.95);
-        border: 1px solid #e5e7eb;
+    .notice {
+        margin: 0;
+        border: 1px solid #bfd1ff;
         border-radius: 0.75rem;
-        padding: 1rem;
+        background: #fff;
+        color: #1f2937;
+        padding: 0.7rem 0.85rem;
     }
 
-    .header h1 {
-        margin: 0 0 0.4rem;
-        color: #0f172a;
-    }
-
-    .header p {
-        margin: 0;
-        color: #334155;
-    }
-
-    .stats {
+    .actions {
         display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-top: 0.6rem;
+        justify-content: flex-end;
     }
 
-    .stat {
-        border: 1px solid #cbd5e1;
+    .dump-button {
+        display: inline-block;
+        text-decoration: none;
+        background: var(--primary-blue);
+        border: 1px solid #d1d5db;
+        color: #ffffff;
+        padding: 0.7rem 1rem;
         border-radius: 999px;
-        background: #f8fafc;
-        color: #0f172a;
-        padding: 0.2rem 0.55rem;
-        font-size: 0.8rem;
-    }
-
-    .achievement-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-        gap: 0.9rem;
-    }
-
-    .achievement-card {
-        display: grid;
-        gap: 0.65rem;
-    }
-
-    .card-head {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .card-head h2 {
-        margin: 0;
-        font-size: 1rem;
-    }
-
-    .icon {
-        width: 38px;
-        height: 38px;
-        object-fit: contain;
-        border-radius: 0.5rem;
-        border: 1px solid #e2e8f0;
-        background: #ffffff;
-        padding: 0.12rem;
-    }
-
-    .time {
-        margin: 0;
-        color: #475569;
-        font-size: 0.86rem;
-    }
-
-    .download-btn {
-        width: fit-content;
-        border: 1px solid #94a3b8;
-        border-radius: 0.5rem;
-        background: #ffffff;
-        color: #0f172a;
-        padding: 0.45rem 0.65rem;
         font: inherit;
+        font-size: 0.95rem;
         cursor: pointer;
     }
 
-    .error,
-    .loading,
-    .empty {
+    .dump-button:disabled {
+        opacity: 0.65;
+        cursor: progress;
+    }
+
+    .poster {
+        position: relative;
+        overflow: hidden;
+        margin: 0 -1rem;
+        padding: 1.2rem;
+        display: grid;
+        gap: 1rem;
+        background: #fff;
+        border: 1px solid #bed0ff;
+    }
+
+    .poster-header {
+        position: relative;
+        z-index: 1;
+        padding: 0.9rem;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+    .poster-kicker {
         margin: 0;
-        border: 1px solid #e2e8f0;
-        border-radius: 0.6rem;
-        background: rgba(255, 255, 255, 0.88);
+        color: var(--primary-pink);
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .poster-header h1 {
+        margin: 0;
+        color: #111827;
+    }
+
+    .poster-subtitle {
+        margin: 0;
+        color: var(--primary-blue);
+    }
+
+    .section-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 1rem;
+    }
+
+    .section-item {
+        position: relative;
+        min-height: 190px;
+        isolation: isolate;
+    }
+
+    .section-shape {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+        z-index: 0;
+    }
+
+    .section-content {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        gap: 0.5rem;
+        padding: 1rem;
         color: #0f172a;
-        padding: 0.65rem 0.8rem;
+    }
+
+    .section-content p {
+        margin: 0;
+        line-height: 1.4;
+    }
+
+    .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.6rem;
+    }
+
+    .head-main {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+    }
+
+    .count {
+        color: var(--primary-pink);
+        font-weight: 600;
+        font-size: 2rem;
+        line-height: 1;
+        min-width: 2.2rem;
+    }
+
+    h2 {
+        margin: 0;
+    }
+
+    .meta {
+        margin: 0.1rem 0 0;
+        color: #475569;
+        font-size: 0.8rem;
+    }
+
+    .head-side {
+        display: grid;
+        justify-items: end;
+        gap: 0.45rem;
+    }
+
+    .difficulty {
+        border-radius: 999px;
+        font-size: 0.76rem;
+        padding: 0.2rem 0.5rem;
+        border: 1px solid #bfdbfe;
+        background: #eff6ff;
+        color: #1d4ed8;
+    }
+
+    .icon {
+        position: absolute;
+        right: 2rem;
+        bottom: 0;
+        transform: translateX(30%);
+        width: 15rem;
+        height: 15rem;
+        object-fit: contain;
+    }
+
+    .photo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.55rem;
+    }
+
+    .photo-item {
+        transform: rotate(1deg);
+        margin: 0;
+        display: grid;
+        gap: 0.32rem;
+    }
+
+    .photo-time {
+        margin: 0;
+        font-size: 0.74rem;
+        color: #475569;
+    }
+
+    @media (max-width: 680px) {
+        .poster {
+            padding: 0.9rem;
+        }
+
+        .section-content {
+            padding: 0.8rem;
+        }
     }
 </style>

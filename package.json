@@ -22,6 +22,7 @@
 	},
 	"dependencies": {
 		"@fontsource/urbanist": "^5.2.7",
+		"html-to-image": "^1.11.13",
 		"svelte-lightbox": "^1.1.7"
 	}
 }
