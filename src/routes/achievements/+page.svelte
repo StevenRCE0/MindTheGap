@@ -144,6 +144,13 @@
         return `background:var(--secondary-blue); opacity:0.3;clip-path: polygon(${p1x}% ${p1y}%, ${p2x}% ${p2y}%, ${p3x}% ${p3y}%, ${p4x}% ${p4y}%); transform: rotate(${rotate}deg);`;
     }
 
+    function buildPhotoStyle(photoId: string): string {
+        const rand = seededRandom(hashCode(`photo-${photoId}`));
+        const rotate = randomBetween(rand, -7, 7).toFixed(2);
+        const translateY = randomBetween(rand, -2, 2).toFixed(1);
+        return `transform: rotate(${rotate}deg) translateY(${translateY}px);`;
+    }
+
     function sectionWhyItMatters(guide?: Guide): string {
         return (
             guide?.whyItMatters ??
@@ -233,7 +240,7 @@
                 onclick={dumpPosterAsImage}
                 type="button"
             >
-                {isDumping ? "Generating..." : "Download Your Poster"}
+                {isDumping ? "Generating..." : "Download My Poster"}
             </button>
         </div>
 
@@ -265,12 +272,6 @@
                                             {section.guide?.title ??
                                                 "Unknown guide"}
                                         </h2>
-                                        <p class="meta">
-                                            {section.photos.length}
-                                            {section.photos.length === 1
-                                                ? " photo logged"
-                                                : " photos logged"}
-                                        </p>
                                     </div>
                                 </div>
 
@@ -292,7 +293,10 @@
 
                             <div class="photo-grid">
                                 {#each section.photos as achievement (achievement.id)}
-                                    <figure class="photo-item">
+                                    <figure
+                                        class="photo-item"
+                                        style={buildPhotoStyle(achievement.id)}
+                                    >
                                         <FullscreenPhoto
                                             alt="Accomplished achievement"
                                             src={achievement.imageDataUrl}
@@ -451,12 +455,6 @@
         margin: 0;
     }
 
-    .meta {
-        margin: 0.1rem 0 0;
-        color: #475569;
-        font-size: 0.8rem;
-    }
-
     .head-side {
         display: grid;
         justify-items: end;
@@ -483,16 +481,18 @@
     }
 
     .photo-grid {
+        margin-top: 1.5rem;
         display: grid;
+        direction: rtl;
         grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
         gap: 0.55rem;
     }
 
     .photo-item {
-        transform: rotate(1deg);
         margin: 0;
         display: grid;
         gap: 0.32rem;
+        transform-origin: center;
     }
 
     .photo-time {
