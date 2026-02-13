@@ -1,7 +1,7 @@
 <script lang="ts">
     import { browser } from "$app/environment";
     import { onNavigate } from "$app/navigation";
-    import favicon from "$lib/assets/favicon.svg";
+    import favicon from "$lib/assets/favicon.png";
     import eyeFooter from "$lib/assets/Eye.png";
     import { onMount } from "svelte";
     import "$lib/styles/fonts.css";
@@ -68,6 +68,7 @@
         <nav>
             <a href="/">Guides</a>
             <a href="/achievements">My Poster</a>
+            <a href="/download">App</a>
         </nav>
     </header>
     <main>{@render children()}</main>

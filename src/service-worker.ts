@@ -10,6 +10,7 @@ const APP_SHELL = Array.from(
   new Set([
     "/",
     "/achievements",
+    "/download",
     "/manifest.webmanifest",
     ...GUIDE_ROUTES,
     ...build,
