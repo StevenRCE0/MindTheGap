@@ -52,6 +52,7 @@
     }
 
     .preview {
+        margin: 0 auto;
         width: 100%;
         max-width: 760px;
         border-radius: 0.75rem;
